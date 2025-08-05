@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
+	"io"
 	"math/big"
 	"sort"
 	"strings"
@@ -640,44 +641,91 @@ func deleteRelayAddrFromSheet(myAddr string) {
 	fmt.Println("[INFO] Deleted relay address from sheet successfully")
 }
 
+// func fetchRelayAddrsFromSheet() ([]string, error) {
+// 	csvURL := "https://raw.githubusercontent.com/cherry-aggarwal/LIBR/refs/heads/integration/docs/network.csv"
+// 	resp, err := http.Get(csvURL)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to fetch CSV: %w", err)
+// 	}
+// 	defer resp.Body.Close()
+
+// 	reader := csv.NewReader(resp.Body)
+
+// 	// Skip header
+// 	if _, err := reader.Read(); err != nil {
+// 		return nil, fmt.Errorf("failed to read header: %w", err)
+// 	}
+
+// 	var relayAddrs []string
+
+// 	for {
+// 		row, err := reader.Read()
+// 		if err != nil {
+// 			if err.Error() == "EOF" {
+// 				break
+// 			}
+// 			log.Printf("skipping bad row: %v", err)
+// 			continue
+// 		}
+
+// 		if len(row) < 1 {
+// 			log.Printf("skipping row with too few columns: %v", row)
+// 			continue
+// 		}
+
+// 		relayAddrs = append(relayAddrs, row[0])
+// 	}
+
+// 	if len(relayAddrs) == 0 {
+// 		return nil, fmt.Errorf("no valid address found")
+// 	}
+
+// 	return relayAddrs, nil
+// }
+
 func fetchRelayAddrsFromSheet() ([]string, error) {
-	csvURL := "https://raw.githubusercontent.com/cherry-aggarwal/LIBR/refs/heads/integration/docs/network.csv"
-	resp, err := http.Get(csvURL)
+	relayGID := "1789680527"
+	rows, err := fetchRawData(relayGID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch CSV: %w", err)
+		return nil, err
+	}
+
+	var relayList []string
+	for _, row := range rows {
+		if len(row) >= 1 {
+			addr := strings.TrimSpace(row[0])
+			// Only include addresses that start with '/'
+			if strings.HasPrefix(addr, "/") {
+				relayList = append(relayList, addr)
+			}
+		}
+	}
+	return relayList, nil
+}
+
+func fetchRawData(gid string) ([][]string, error) {
+	url := fmt.Sprintf("https://docs.google.com/spreadsheets/d/e/2PACX-1vRDDE0x6LttdW13zLUwodMcVBsqk8fpnUsv-5SIJifZKWRehFpSKuJZawhswGMHSI2fZJDuENQ8SX1v/pub?output=csv&gid=%s", gid)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
 	reader := csv.NewReader(resp.Body)
-
-	// Skip header
-	if _, err := reader.Read(); err != nil {
-		return nil, fmt.Errorf("failed to read header: %w", err)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("invalid CSV: %w", err)
 	}
 
-	var relayAddrs []string
-
-	for {
-		row, err := reader.Read()
-		if err != nil {
-			if err.Error() == "EOF" {
-				break
-			}
-			log.Printf("skipping bad row: %v", err)
-			continue
-		}
-
-		if len(row) < 1 {
-			log.Printf("skipping row with too few columns: %v", row)
-			continue
-		}
-
-		relayAddrs = append(relayAddrs, row[0])
+	if len(records) <= 1 {
+		return nil, fmt.Errorf("no data rows in sheet")
 	}
 
-	if len(relayAddrs) == 0 {
-		return nil, fmt.Errorf("no valid address found")
-	}
-
-	return relayAddrs, nil
+	return records[1:], nil // :point_left: skip the header row
 }
