@@ -210,7 +210,7 @@ func main() {
 	// }()
 
 	addr, _ := fetchRelayAddrsFromSheet()
-	go PingTargets(addr, 14*time.Minute)
+	go PingTargets(addr, 5*time.Minute)
 
 	fmt.Println("[DEBUG] Waiting for interrupt signal...")
 	c := make(chan os.Signal, 1)
