@@ -52,15 +52,13 @@ const ChatProtocol = protocol.ID("/chat/1.0.0")
 
 type reqFormat struct {
 	Type      string          `json:"type,omitempty"`
-	PubIP     string          `json:"pubip,omitempty"`
+	PeerID    string          `json:"peerid,omitempty"`
 	ReqParams json.RawMessage `json:"reqparams,omitempty"`
 	Body      json.RawMessage `json:"body,omitempty"`
 }
 
-var (
-	IDmap = make(map[string]string)
-	mu    sync.RWMutex
-)
+var idsConnected []string
+var mu sync.RWMutex
 
 var RelayHost host.Host
 
@@ -78,11 +76,11 @@ func (re *RelayEvents) Connected(net network.Network, conn network.Conn) {
 }
 func (re *RelayEvents) Disconnected(net network.Network, conn network.Conn) {
 	fmt.Printf("[INFO] Peer disconnected: %s\n", conn.RemotePeer())
-	// Remove peer from IDmap if needed
+	// Remove peer from idsConnected if needed
 	mu.Lock()
-	for pubip, pid := range IDmap {
-		if pid == conn.RemotePeer().String() {
-			delete(IDmap, pubip)
+	for i := range idsConnected {
+		if idsConnected[i] == conn.RemotePeer().String() {
+			idsConnected = append(idsConnected[:i], idsConnected[i+1:]...)
 			break
 		}
 	}
@@ -176,38 +174,10 @@ func main() {
 	RelayHost.SetStreamHandler("/chat/1.0.0", handleChatStream)
 	go func() {
 		for {
-			fmt.Println(IDmap)
+			fmt.Println(idsConnected)
 			time.Sleep(30 * time.Second)
 		}
 	}()
-
-	// go func() {
-	// 	log.Println("ENTERING GO ROUTINE FOR HEALTH CHECK SERVER")
-
-	// 	check := func(w http.ResponseWriter, r *http.Request) {
-	// 		log.Println("[DEBUG] /check endpoint hit")
-	// 		if r.Method == http.MethodGet {
-	// 			w.WriteHeader(http.StatusOK)
-	// 			w.Write([]byte("running"))
-	// 		} else {
-	// 			w.WriteHeader(http.StatusMethodNotAllowed)
-	// 		}
-	// 	}
-
-	// 	http.HandleFunc("/check", check)
-
-	// 	port := os.Getenv("PORT")
-	// 	if port == "" {
-	// 		port = "8080"
-	// 	}
-
-	// 	addr := fmt.Sprintf(":%s", port)
-	// 	log.Printf("[INFO] Starting health check server on %s", addr)
-
-	// 	if err := http.ListenAndServe(addr, nil); err != nil {
-	// 		log.Fatalf("[ERROR] Failed to start health check server: %v", err)
-	// 	}
-	// }()
 
 	addr, _ := fetchRelayAddrsFromSheet()
 	go PingTargets(addr, 5*time.Minute)
@@ -285,25 +255,31 @@ func handleChatStream(s network.Stream) {
 
 		if req.Type == "register" {
 			peerID := s.Conn().RemotePeer()
-			fmt.Printf("[INFO]Given public IP is %s \n", req.PubIP)
+			fmt.Printf("[INFO]Incoming PeerID is %s \n", peerID)
 			fmt.Println("[INFO]Registering the peer into relay map")
 			mu.Lock()
-			IDmap[req.PubIP] = peerID.String()
+			idsConnected = append(idsConnected, peerID.String())
 			mu.Unlock()
 		}
 
 		if req.Type == "SendMsg" {
+			targetPeerID := ""
 			mu.RLock()
-			targetPeerID := IDmap[req.PubIP]
+			for i := range idsConnected {
+				if idsConnected[i] == req.PeerID {
+					targetPeerID = req.PeerID
+					break
+				}
+			}
 			mu.RUnlock()
 			if targetPeerID == "" {
 				fmt.Println("[DEBUG]This peer is not on this relay, contacting other relay")
-				targetRelayAddr := GetRelayAddr(req.PubIP)
+				targetRelayAddr := GetRelayAddr(targetPeerID)
 
 				var forwardReq reqFormat
 				forwardReq.Body = req.Body
 				forwardReq.ReqParams = req.ReqParams
-				forwardReq.PubIP = req.PubIP
+				forwardReq.PeerID = req.PeerID
 				forwardReq.Type = "forward"
 
 				relayMA, err := ma.NewMultiaddr(targetRelayAddr)
@@ -350,7 +326,7 @@ func handleChatStream(s network.Stream) {
 				var resp respFormat
 				resp.Type = "GET"
 				resp.Resp = buf
-				fmt.Printf("[Debug]Frowarded Resp from relay : %s : %+v \n", TargetRelayInfo.ID.String(), resp)
+				fmt.Printf("[Debug]Forwarded Resp from relay : %s : %+v \n", TargetRelayInfo.ID.String(), resp)
 
 				if err != nil {
 					fmt.Println("[DEBUG] Error reading response from target relay:", err)
@@ -371,9 +347,9 @@ func handleChatStream(s network.Stream) {
 					return
 				}
 				relayID := RelayHost.ID()
-				fmt.Println("1")
+				//fmt.Println("1")
 				targetID, err := peer.Decode(targetPeerID)
-				fmt.Println("2")
+				//fmt.Println("2")
 				if err != nil {
 					log.Printf("[ERROR] Invalid Peer ID: %v", err)
 					s.Write([]byte("invalid peer id"))
@@ -447,13 +423,19 @@ func handleChatStream(s network.Stream) {
 		}
 
 		if req.Type == "forward" {
+			targetPeerID := ""
 			mu.RLock()
-			targetPeerID := IDmap[req.PubIP]
+			for i := range idsConnected {
+				if idsConnected[i] == req.PeerID {
+					targetPeerID = req.PeerID
+					break
+				}
+			}
 			mu.RUnlock()
 
 			if targetPeerID == "" {
-				fmt.Println("[DEBUG] Target peer not found in this relay")
-				s.Write([]byte("Target peer not found"))
+				fmt.Println("[DEBUG] Target peer not found in the forwarded relay")
+				s.Write([]byte("Target peer not found even on the forwarded relay"))
 				return
 			}
 
@@ -463,7 +445,7 @@ func handleChatStream(s network.Stream) {
 				return
 			}
 
-			// Build relayed addr
+			// Build relayed addr of target peer
 			relayID := RelayHost.ID()
 			relayBaseAddr, _ := ma.NewMultiaddr("/p2p/" + relayID.String())
 			circuitAddr, _ := ma.NewMultiaddr("/p2p-circuit")
@@ -528,7 +510,7 @@ func handleChatStream(s network.Stream) {
 	}
 }
 
-func GetRelayAddr(peerIP string) string {
+func GetRelayAddr(peerID string) string {
 	RelayMultiAddrList, err := fetchRelayAddrsFromSheet()
 
 	if err != nil {
@@ -543,7 +525,7 @@ func GetRelayAddr(peerIP string) string {
 	var distmap []RelayDist
 
 	h1 := sha256.New() // Use sha256.New() for SHA-256
-	h1.Write([]byte(peerIP))
+	h1.Write([]byte(peerID))
 	peerIDhash := hex.EncodeToString(h1.Sum(nil))
 
 	for _, relay := range relayList {
@@ -619,29 +601,6 @@ func uploadRelayAddrToSheet(myAddr string) {
 	fmt.Println("[INFO] Uploaded relay address to sheet successfully")
 }
 
-// func fetchRelayAddrsFromSheet() []string {
-// 	resp, err := http.Get(sheetWebAppURL)
-// 	if err != nil {
-// 		fmt.Printf("[ERROR] Failed to fetch relay addresses: %v\n", err)
-// 		return nil
-// 	}
-// 	defer resp.Body.Close()
-// 	body, err := ioutil.ReadAll(resp.Body)
-// 	if err != nil {
-// 		fmt.Printf("[ERROR] Failed to read response: %v\n", err)
-// 		return nil
-// 	}
-
-// 	var addrs []string
-// 	err = json.Unmarshal(body, &addrs)
-// 	if err != nil {
-// 		fmt.Printf("[ERROR] Failed to parse address list: %v\n", err)
-// 		return nil
-// 	}
-// 	fmt.Println("[INFO] Relay address list fetched from sheet")
-// 	return addrs
-// }
-
 func deleteRelayAddrFromSheet(myAddr string) {
 	reqBody := strings.NewReader(`{"delete":"` + myAddr + `"}`)
 
@@ -662,48 +621,6 @@ func deleteRelayAddrFromSheet(myAddr string) {
 
 	fmt.Println("[INFO] Deleted relay address from sheet successfully")
 }
-
-// func fetchRelayAddrsFromSheet() ([]string, error) {
-// 	csvURL := "https://raw.githubusercontent.com/cherry-aggarwal/LIBR/refs/heads/integration/docs/network.csv"
-// 	resp, err := http.Get(csvURL)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to fetch CSV: %w", err)
-// 	}
-// 	defer resp.Body.Close()
-
-// 	reader := csv.NewReader(resp.Body)
-
-// 	// Skip header
-// 	if _, err := reader.Read(); err != nil {
-// 		return nil, fmt.Errorf("failed to read header: %w", err)
-// 	}
-
-// 	var relayAddrs []string
-
-// 	for {
-// 		row, err := reader.Read()
-// 		if err != nil {
-// 			if err.Error() == "EOF" {
-// 				break
-// 			}
-// 			log.Printf("skipping bad row: %v", err)
-// 			continue
-// 		}
-
-// 		if len(row) < 1 {
-// 			log.Printf("skipping row with too few columns: %v", row)
-// 			continue
-// 		}
-
-// 		relayAddrs = append(relayAddrs, row[0])
-// 	}
-
-// 	if len(relayAddrs) == 0 {
-// 		return nil, fmt.Errorf("no valid address found")
-// 	}
-
-// 	return relayAddrs, nil
-// }
 
 func fetchRelayAddrsFromSheet() ([]string, error) {
 	relayGID := "1789680527"
@@ -726,7 +643,7 @@ func fetchRelayAddrsFromSheet() ([]string, error) {
 }
 
 func fetchRawData(gid string) ([][]string, error) {
-	url := fmt.Sprintf("https://docs.google.com/spreadsheets/d/e/2PACX-1vRDDE0x6LttdW13zLUwodMcVBsqk8fpnUsv-5SIJifZKWRehFpSKuJZawhswGMHSI2fZJDuENQ8SX1v/pub?output=csv&gid=%s", gid)
+	url := fmt.Sprintf("https://docs.google.com/spreadsheets/d/e/2PACX-1vRDDE0x6LttdW13zLUwodMcVBsqk8fpnUsv-5SIJifZKWRehFpSKuJZawhswGMHSI2fZJDuENQ8SX1v/pub?output=csv%s", gid)
 
 	resp, err := http.Get(url)
 	if err != nil {
