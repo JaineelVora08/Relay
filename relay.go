@@ -197,7 +197,11 @@ func main() {
 		}
 	}()
 
-	addr, _ := GetRelayAddrFromMongo()
+	//here
+for i := 0; i < 100; i++ {
+    addr, _ := GetRelayAddrFromMongo()
+}
+	
 	go PingTargets(addr, 5*time.Minute)
 
 	fmt.Println("[DEBUG] Waiting for interrupt signal...")
