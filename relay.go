@@ -57,9 +57,9 @@ const ChatProtocol = protocol.ID("/chat/1.0.0")
 //var RelayMultiAddrList = []string{"/dns4/0.tcp.in.ngrok.io/tcp/14395/p2p/12D3KooWLBVV1ty7MwJQos34jy1WqGrfkb3bMAfxUJzCgwTBQ2pn",}
 
 type reqFormat struct {
-	Type      string          `json:"type,omitempty"`
+	Type string `json:"type,omitempty"`
 	//PubIP     string          `json:"pubip,omitempty"`
-	PeerID    string			`json:"peerid"`
+	PeerID    string          `json:"peerid"`
 	ReqParams json.RawMessage `json:"reqparams,omitempty"`
 	Body      json.RawMessage `json:"body,omitempty"`
 }
@@ -70,8 +70,8 @@ type reqFormat struct {
 // )
 
 var (
-	ConnectedPeers []string 
-	mu sync.RWMutex
+	ConnectedPeers []string
+	mu             sync.RWMutex
 )
 
 var RelayHost host.Host
@@ -106,7 +106,7 @@ func (re *RelayEvents) Disconnected(net network.Network, conn network.Conn) {
 	// 		break
 	// 	}
 	// }
-	if contains(ConnectedPeers,conn.RemotePeer().String()){
+	if contains(ConnectedPeers, conn.RemotePeer().String()) {
 		remove(&ConnectedPeers, conn.RemotePeer().String())
 	}
 	mu.Unlock()
@@ -120,7 +120,7 @@ func main() {
 
 	err := SetupMongo(mongo_uri)
 
-	if err!=nil{
+	if err != nil {
 		fmt.Println("[DEBUG]Error connecting to MongoDB")
 		return
 	}
@@ -147,27 +147,26 @@ func main() {
 		libp2p.EnableNATService(),
 		libp2p.EnableRelayService(),
 		libp2p.Transport(tcp.NewTCPTransport),
-		libp2p.Transport(websocket.New), 
+		libp2p.Transport(websocket.New),
 	)
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to create relay host: %v", err)
 	}
 	RelayHost.Network().Notify(&RelayEvents{})
 
-
 	OwnRelayAddrFull = fmt.Sprintf("/dns4/libr-relay.onrender.com/tcp/443/wss/p2p/%s", RelayHost.ID().String())
 
 	customRelayResources := relay.Resources{
 		Limit: &relay.RelayLimit{
 			Duration: 30 * time.Minute,
-			Data:     1 << 20, 
+			Data:     1 << 20,
 		},
 		ReservationTTL:         time.Hour,
 		MaxReservations:        1000,
 		MaxCircuits:            64,
 		BufferSize:             4096,
 		MaxReservationsPerPeer: 10,
-		MaxReservationsPerIP:   400, 
+		MaxReservationsPerIP:   400,
 		MaxReservationsPerASN:  64,
 	}
 
@@ -209,14 +208,13 @@ func main() {
 	fmt.Println("[INFO] Shutting down relay...")
 }
 func remove(Lists *[]string, val string) {
-    for i, item := range *Lists {
-        if item == val {
-            *Lists = append((*Lists)[:i], (*Lists)[i+1:]...)
-            return
-        }
-    }
+	for i, item := range *Lists {
+		if item == val {
+			*Lists = append((*Lists)[:i], (*Lists)[i+1:]...)
+			return
+		}
+	}
 }
-
 
 func PingTargets(addresses []string, interval time.Duration) {
 	go func() {
@@ -294,11 +292,10 @@ func handleChatStream(s network.Stream) {
 			peerID := s.Conn().RemotePeer()
 			peerID2 := req.PeerID
 
-			if(peerID2 != peerID.String()){
+			if peerID2 != peerID.String() {
 				fmt.Println("PEER ID MISMATCH")
-				return 
+				return
 			}
-
 
 			fmt.Printf("[INFO]Given peerID is %s \n", req.PeerID)
 			fmt.Println("[INFO]Registering the peer into relay")
@@ -323,12 +320,12 @@ func handleChatStream(s network.Stream) {
 			if targetPeerID == "" {
 				fmt.Println("[DEBUG]This peer is not on this relay, contacting other relay")
 				targetRelayAddr := GetRelayAddr(req.PeerID)
-				if(targetRelayAddr == ""){
+				if targetRelayAddr == "" {
 					fmt.Println("Can't get relay addr from mongoDB")
 					s.Write([]byte("[DEBUG]Can't get Relay addresses from database, retry again"))
 					return
 				}
-				if(targetRelayAddr==OwnRelayAddrFull){
+				if targetRelayAddr == OwnRelayAddrFull {
 					s.Write([]byte("[DEBUG]Target Peer not in network"))
 					return
 				}
@@ -409,13 +406,11 @@ func handleChatStream(s network.Stream) {
 				targetID, err := peer.Decode(targetPeerID)
 				fmt.Println("2")
 
-
 				if err != nil {
 					log.Printf("[ERROR] Invalid Peer ID: %v", err)
 					s.Write([]byte("invalid peer id"))
 					return
 				}
-
 
 				relayBaseAddr, err := ma.NewMultiaddr("/p2p/" + relayID.String())
 				if err != nil {
@@ -486,7 +481,7 @@ func handleChatStream(s network.Stream) {
 		if req.Type == "forward" {
 			mu.RLock()
 			var targetPeerID string
-			if(contains(ConnectedPeers, req.PeerID)){
+			if contains(ConnectedPeers, req.PeerID) {
 
 				targetPeerID = req.PeerID
 			}
@@ -650,7 +645,6 @@ func AddRelayAddrToCSV(myAddr string, path string) error {
 	return err
 }
 
-
 func SetupMongo(uri string) error {
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
@@ -670,7 +664,6 @@ func SetupMongo(uri string) error {
 	return nil
 }
 
-
 func DisconnectMongo() {
 	if cancel != nil {
 		cancel()
@@ -683,8 +676,6 @@ func DisconnectMongo() {
 		}
 	}
 }
-
-
 
 func GetRelayAddrFromMongo() ([]string, error) {
 	collection := MongoClient.Database("Addrs").Collection("relays") // replace with actual DB & collection
