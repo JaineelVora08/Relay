@@ -578,8 +578,19 @@ func GetRelayAddr(peerID string) string {
 	var relayList []string
 	for _, multiaddr := range RelayMultiAddrList {
 		parts := strings.Split(multiaddr, "/")
+		if parts[len(parts)-1] == peerID {
+			continue
+		}
+		if parts[len(parts)-1] == peerID {
+            continue
+        }
+
 		relayList = append(relayList, parts[len(parts)-1])
 	}
+ 
+	if len(relayList) == 0 {
+        return ""
+    }
 
 	var distmap []RelayDist
 
