@@ -56,11 +56,11 @@ const ChatProtocol = protocol.ID("/chat/1.0.0")
 //var RelayMultiAddrList = []string{"/dns4/0.tcp.in.ngrok.io/tcp/14395/p2p/12D3KooWLBVV1ty7MwJQos34jy1WqGrfkb3bMAfxUJzCgwTBQ2pn",}
 
 type reqFormat struct {
-	Type      string          json:"type,omitempty"
-	//PubIP     string          json:"pubip,omitempty"
-	PeerID    string			json:"peerid"
-	ReqParams json.RawMessage json:"reqparams,omitempty"
-	Body      json.RawMessage json:"body,omitempty"
+	Type      string          `json:"type,omitempty"`
+	//PubIP     string          `json:"pubip,omitempty"`
+	PeerID    string			`json:"peerid"`
+	ReqParams json.RawMessage `json:"reqparams,omitempty"`
+	Body      json.RawMessage `json:"body,omitempty"`
 }
 
 // var (
@@ -82,8 +82,8 @@ var (
 )
 
 type respFormat struct {
-	Type string json:"type"
-	Resp []byte json:"resp"
+	Type string `json:"type"`
+	Resp []byte `json:"resp"`
 }
 
 type RelayEvents struct{}
@@ -711,7 +711,7 @@ func DisconnectMongo() {
 // 	var relayList []string
 // 	for cursor.Next(ctx) {
 // 		var doc struct {
-// 			Address string bson:"address"
+// 			Address string `bson:"address"`
 // 		}
 // 		if err := cursor.Decode(&doc); err != nil {
 // 			return nil, err
@@ -737,7 +737,7 @@ func GetRelayAddrFromMongo() ([]string, error) {
 	var relayList []string
 	for cursor.Next(ctx) {
 		var doc struct {
-			Address string bson:"address"
+			Address string `bson:"address"`
 		}
 		if err := cursor.Decode(&doc); err != nil {
 			return nil, fmt.Errorf("failed to decode relay document: %w", err)
