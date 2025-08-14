@@ -198,9 +198,9 @@ func main() {
 	}()
 
 	//here
-for i := 0; i < 100; i++ {
+//for i := 0; i < 100; i++ {
     addr, _ := GetRelayAddrFromMongo()
-}
+//}
 	
 	go PingTargets(addr, 5*time.Minute)
 
