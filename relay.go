@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"io"
@@ -16,7 +15,6 @@ import (
 
 	"context"
 	//"encoding/csv"
-
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -28,7 +26,6 @@ import (
 
 	"net/http"
 
-	//"github.com/joho/godotenv"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -43,7 +40,9 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type RelayDist struct {
@@ -56,9 +55,9 @@ const ChatProtocol = protocol.ID("/chat/1.0.0")
 //var RelayMultiAddrList = []string{"/dns4/0.tcp.in.ngrok.io/tcp/14395/p2p/12D3KooWLBVV1ty7MwJQos34jy1WqGrfkb3bMAfxUJzCgwTBQ2pn",}
 
 type reqFormat struct {
-	Type string `json:"type,omitempty"`
+	Type      string          `json:"type,omitempty"`
 	//PubIP     string          `json:"pubip,omitempty"`
-	PeerID    string          `json:"peer_id"`
+	PeerID    string			`json:"peer_id"`
 	ReqParams json.RawMessage `json:"reqparams,omitempty"`
 	Body      json.RawMessage `json:"body,omitempty"`
 }
@@ -69,10 +68,8 @@ type reqFormat struct {
 // )
 
 var (
-	ConnectedPeers []string
-	mu             sync.RWMutex
-	JS_ServerURL   string
-	JS_API_key     string
+	ConnectedPeers []string 
+	mu sync.RWMutex
 )
 
 var RelayHost host.Host
@@ -107,7 +104,7 @@ func (re *RelayEvents) Disconnected(net network.Network, conn network.Conn) {
 	// 		break
 	// 	}
 	// }
-	if contains(ConnectedPeers, conn.RemotePeer().String()) {
+	if contains(ConnectedPeers,conn.RemotePeer().String()){
 		remove(&ConnectedPeers, conn.RemotePeer().String())
 	}
 	mu.Unlock()
@@ -116,13 +113,15 @@ func (re *RelayEvents) Disconnected(net network.Network, conn network.Conn) {
 func main() {
 	fmt.Println("STARTING RELAY CODE")
 	//godotenv.Load()
-	JS_API_key = os.Getenv("JS_API_key")
-	JS_ServerURL = os.Getenv("JS_ServerURL")
-	if JS_API_key == "" || JS_ServerURL == "" {
-		fmt.Println("[DEBUG] Missing JS API key or server URL")
+	mongo_uri := os.Getenv("MONGO_URI")
+	// fmt.Println(mongo_uri)
+
+	err := SetupMongo(mongo_uri)
+
+	if err!=nil{
+		fmt.Println("[DEBUG]Error connecting to MongoDB")
 		return
 	}
-	// fmt.Println(mongo_uri)
 
 	fmt.Println("[DEBUG] Creating connection manager...")
 	connMgr, err := connmgr.NewConnManager(100, 400)
@@ -146,37 +145,23 @@ func main() {
 		libp2p.EnableNATService(),
 		libp2p.EnableRelayService(),
 		libp2p.Transport(tcp.NewTCPTransport),
-		libp2p.Transport(websocket.New),
+		libp2p.Transport(websocket.New), 
 	)
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to create relay host: %v", err)
 	}
-
-	// pubKey := privKey.GetPublic()
-
-	// pubKeyBytes, err := crypto.MarshalPublicKey(pubKey)
-	// if err != nil {
-	// 	log.Fatalf("Failed to marshal public key: %v", err)
-	// }
-
-	// pubKeyStr := base64.StdEncoding.EncodeToString(pubKeyBytes)
-
 	RelayHost.Network().Notify(&RelayEvents{})
 
-	OwnRelayAddrFull = fmt.Sprintf("/dns4/relay-8wrh.onrender.com/tcp/443/wss/p2p/%s", RelayHost.ID().String())
-	err = ConnectJSServer()
-	if err != nil {
-		fmt.Printf("[DEBUG] Error connecting to JS server: %s\n", err)
-		return
-	}
+
+	OwnRelayAddrFull = fmt.Sprintf("/dns4/libr-relay.onrender.com/tcp/443/wss/p2p/%s", RelayHost.ID().String())
 
 	customRelayResources := relay.Resources{
 		ReservationTTL:         time.Hour,
 		MaxReservations:        1000,
 		MaxCircuits:            64,
-		BufferSize:             64 * 1024,
+		BufferSize:             64*1024,
 		MaxReservationsPerPeer: 10,
-		MaxReservationsPerIP:   400,
+		MaxReservationsPerIP:   400, 
 		MaxReservationsPerASN:  64,
 	}
 
@@ -207,24 +192,25 @@ func main() {
 		}
 	}()
 
-	addr, _ := GetRelayAddrFromJSServer()
+	addr, _ := GetRelayAddrFromMongo()
 	go PingTargets(addr, 5*time.Minute)
 
 	fmt.Println("[DEBUG] Waiting for interrupt signal...")
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
-	deleteFromJSServer()
+
 	fmt.Println("[INFO] Shutting down relay...")
 }
 func remove(Lists *[]string, val string) {
-	for i, item := range *Lists {
-		if item == val {
-			*Lists = append((*Lists)[:i], (*Lists)[i+1:]...)
-			return
-		}
-	}
+    for i, item := range *Lists {
+        if item == val {
+            *Lists = append((*Lists)[:i], (*Lists)[i+1:]...)
+            return
+        }
+    }
 }
+
 
 func PingTargets(addresses []string, interval time.Duration) {
 	go func() {
@@ -278,7 +264,7 @@ func handleChatStream(s network.Stream) {
 	fmt.Println("[DEBUG] Incoming chat stream from", s.Conn().RemoteMultiaddr())
 	defer s.Close()
 	//reader := bufio.NewReader(s)
-	decoder := json.NewDecoder(s)
+		decoder := json.NewDecoder(s)
 
 	for {
 
@@ -448,12 +434,14 @@ func handleChatStream(s network.Stream) {
 				}
 				defer sendStream.Close()
 
+				// Use an encoder to write the JSON object to the target peer
 				encoder := json.NewEncoder(sendStream)
 				if err := encoder.Encode(req); err != nil {
 					fmt.Println("[DEBUG]Error sending message despite stream opened:", err)
 					return
 				}
 
+				// Read the response back from the target using a decoder
 				var respBody json.RawMessage
 				respDecoder := json.NewDecoder(sendStream)
 				if err := respDecoder.Decode(&respBody); err != nil {
@@ -517,12 +505,14 @@ func handleChatStream(s network.Stream) {
 			}
 			defer sendStream.Close()
 
+			// Use an encoder to forward the request
 			encoder := json.NewEncoder(sendStream)
 			if err := encoder.Encode(req); err != nil {
 				fmt.Println("[DEBUG]Error sending message despite stream opened:", err)
 				return
 			}
 
+			// Use a decoder to read the response
 			var respBody json.RawMessage
 			respDecoder := json.NewDecoder(sendStream)
 			if err := respDecoder.Decode(&respBody); err != nil {
@@ -541,16 +531,16 @@ func handleChatStream(s network.Stream) {
 }
 
 func GetRelayAddr(peerID string) string {
-	RelayMultiAddrList, err := GetRelayAddrFromJSServer()
+	RelayMultiAddrList, err := GetRelayAddrFromMongo()
 
 	if err != nil {
-		fmt.Println("[DEBUG]Error getting from JS server: ", err)
+		fmt.Println("[DEBUG]Error getting from mongo error : ",err)
 		return ""
 	}
 	var relayList []string
 	for _, multiaddr := range RelayMultiAddrList {
-		if multiaddr == OwnRelayAddrFull {
-			continue
+		if multiaddr == OwnRelayAddrFull{
+			continue;
 		}
 		parts := strings.Split(multiaddr, "/")
 		relayList = append(relayList, parts[len(parts)-1])
@@ -614,15 +604,16 @@ func XorHexToBigInt(hex1, hex2 string) *big.Int {
 	return result
 }
 
-// func AddRelayAddrToCSV(myAddr string, path string) error {
-// 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer f.Close()
-// 	_, err = f.WriteString(myAddr + "\n")
-// 	return err
-// }
+func AddRelayAddrToCSV(myAddr string, path string) error {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(myAddr + "\n")
+	return err
+}
+
 
 // func SetupMongo(uri string) error {
 // 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
@@ -639,147 +630,40 @@ func XorHexToBigInt(hex1, hex2 string) *big.Int {
 // 	}
 
 // 	MongoClient = client
-// 	log.Println("ongoDB connected")
+// 	log.Println("✅ MongoDB connected")
 // 	return nil
 // }
 
-// func SetupMongo(uri string, PeerID string, PublicKey string) error {
-// 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-// 	defer cancel()
+func SetupMongo(uri string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-// 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
-// 	if err != nil {
-// 		return fmt.Errorf("failed to connect to MongoDB: %w", err)
-// 	}
-
-// 	if err := client.Ping(ctx, nil); err != nil {
-// 		return fmt.Errorf("failed to ping MongoDB: %w", err)
-// 	}
-
-// 	MongoClient = client
-
-// 	collection := MongoClient.Database("Addrs").Collection("nodes")
-
-// 	newNode := bson.D{
-// 		{Key: "peer_id", Value: PeerID},
-// 		{Key: "public_key", Value: PublicKey},
-// 	}
-
-// 	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	_, err = collection.InsertOne(ctx, newNode)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to insert document: %w", err)
-// 	}
-
-// 	log.Printf("Successfully inserted node with peer_id: %s", PeerID)
-// 	return nil
-// }
-
-func ConnectJSServer() error {
-	postData := map[string]string{
-		"address": OwnRelayAddrFull,
-	}
-
-	jsonData, err := json.Marshal(postData)
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
 	if err != nil {
-		return fmt.Errorf("failed to marshal JSON: %w", err)
+		return fmt.Errorf("failed to connect to MongoDB: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", JS_ServerURL+"/api/postrelay", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	if err := client.Ping(ctx, nil); err != nil {
+		return fmt.Errorf("failed to ping MongoDB: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-Key", JS_API_key)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned non-200 status code: %d", resp.StatusCode)
-	}
-
-	fmt.Printf("Successfully connected to JS server:")
+	MongoClient = client
+	log.Println("✅ MongoDB connected successfully")
 	return nil
 }
 
-type ResponsePayload struct {
-	BootList []Relay `json:"boot_list"`
+
+
+func DisconnectMongo() {
+	if MongoClient != nil {
+		if err := MongoClient.Disconnect(context.Background()); err != nil {
+			log.Println("⚠ Error disconnecting MongoDB:", err)
+		} else {
+			log.Println("🛑 MongoDB disconnected")
+		}
+	}
 }
 
-type Relay struct {
-	Address string `json:"address"`
-}
-
-func GetRelayAddrFromJSServer() ([]string, error) {
-	req, err := http.NewRequest("GET", JS_ServerURL+"/api/getrelay", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("server returned non-200 status code: %d", resp.StatusCode)
-	}
-
-	var payload ResponsePayload
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("failed to decode JSON response: %w", err)
-	}
-
-	var addresses []string
-	for _, relay := range payload.BootList {
-		addresses = append(addresses, relay.Address)
-	}
-
-	return addresses, nil
-}
-
-func deleteFromJSServer() error {
-	deleteData := map[string]string{
-		"address": OwnRelayAddrFull,
-	}
-
-	jsonData, err := json.Marshal(deleteData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal JSON: %w", err)
-	}
-
-	req, err := http.NewRequest("DELETE", JS_ServerURL+"/api/deleterelay", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", JS_API_key)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned non-200 status code: %d", resp.StatusCode)
-	}
-
-	fmt.Printf("Successfully deleted relay")
-	return nil
-}
 
 // func GetRelayAddrFromMongo() ([]string, error) {
 // 	collection := MongoClient.Database("Addrs").Collection("relays") // replace with actual DB & collection
@@ -804,29 +688,29 @@ func deleteFromJSServer() error {
 // 	return relayList, nil
 // }
 
-// func GetRelayAddrFromMongo() ([]string, error) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
+func GetRelayAddrFromMongo() ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-// 	collection := MongoClient.Database("Addrs").Collection("relays")
-// 	cursor, err := collection.Find(ctx, bson.M{})
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to fetch relay addresses: %w", err)
-// 	}
-// 	defer cursor.Close(ctx)
+	collection := MongoClient.Database("Addrs").Collection("relays")
+	cursor, err := collection.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch relay addresses: %w", err)
+	}
+	defer cursor.Close(ctx)
 
-// 	var relayList []string
-// 	for cursor.Next(ctx) {
-// 		var doc struct {
-// 			Address string `bson:"address"`
-// 		}
-// 		if err := cursor.Decode(&doc); err != nil {
-// 			return nil, fmt.Errorf("failed to decode relay document: %w", err)
-// 		}
-// 		if strings.HasPrefix(doc.Address, "/") {
-// 			relayList = append(relayList, strings.TrimSpace(doc.Address))
-// 		}
-// 	}
+	var relayList []string
+	for cursor.Next(ctx) {
+		var doc struct {
+			Address string `bson:"address"`
+		}
+		if err := cursor.Decode(&doc); err != nil {
+			return nil, fmt.Errorf("failed to decode relay document: %w", err)
+		}
+		if strings.HasPrefix(doc.Address, "/") {
+			relayList = append(relayList, strings.TrimSpace(doc.Address))
+		}
+	}
 
-// 	return relayList, nil
-// }
+	return relayList,nil
+}
