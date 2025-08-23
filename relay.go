@@ -227,49 +227,93 @@ func remove(Lists *[]string, val string) {
 	}
 }
 
-func PingTargets(addresses []string, interval time.Duration) {
-	go func() {
+// func PingTargets(addresses []string, interval time.Duration) {
+// 	go func() {
 
-		for {
+// 		for {
+// 			for _, multiAddrStr := range addresses {
+// 				// Parse the multiaddress string
+// 				maddr, err := ma.NewMultiaddr(multiAddrStr)
+// 				if err != nil {
+// 					log.Printf("[WARN] Could not parse multiaddress %s: %v\n", multiAddrStr, err)
+// 					continue
+// 				}
+
+// 				// Extract the domain name
+// 				host, err := maddr.ValueForProtocol(ma.P_DNS4)
+// 				if err != nil {
+// 					// Fallback for P_DNS6 or other domain protocols if needed
+// 					host, err = maddr.ValueForProtocol(ma.P_DNS6)
+// 					if err != nil {
+// 						log.Printf("[WARN] Could not extract host from multiaddress %s: %v\n", multiAddrStr, err)
+// 						continue
+// 					}
+// 				}
+
+// 				// Construct the final HTTP URL for the health check
+// 				pingURL := fmt.Sprintf("https://%s/check", host)
+
+// 				// Ping the valid URL
+// 				resp, err := http.Get(pingURL)
+// 				if err != nil {
+// 					log.Printf("[WARN] Failed to ping %s: %v\n", pingURL, err)
+// 					continue
+// 				}
+// 				resp.Body.Close()
+// 			}
+// 			resp2,err := http.Get(JS_ServerURL)
+// 				if err != nil {
+// 					log.Printf("[WARN] Failed to ping %s:","https://libr-server.onrender.com/")
+// 					continue
+// 				}
+// 			resp2.Body.Close()
+// 				fmt.Println("[INFO]Pinged JS server successfully")
+// 				log.Printf("[INFO] Pinged %s — Status: %s\n", pingURL, resp.Status)
+// 			time.Sleep(interval)
+// 		}
+// 	}()
+// }
+
+func PingTargets(addresses []string, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	
+	go func() {
+		for range ticker.C {
+			log.Println("[INFO] Starting new ping cycle...")
+			
 			for _, multiAddrStr := range addresses {
-				// Parse the multiaddress string
 				maddr, err := ma.NewMultiaddr(multiAddrStr)
 				if err != nil {
 					log.Printf("[WARN] Could not parse multiaddress %s: %v\n", multiAddrStr, err)
 					continue
 				}
 
-				// Extract the domain name
 				host, err := maddr.ValueForProtocol(ma.P_DNS4)
 				if err != nil {
-					// Fallback for P_DNS6 or other domain protocols if needed
-					host, err = maddr.ValueForProtocol(ma.P_DNS6)
+					host, err = maddr.ValueForProtocol(ma.P_DNS6) 
 					if err != nil {
 						log.Printf("[WARN] Could not extract host from multiaddress %s: %v\n", multiAddrStr, err)
 						continue
 					}
 				}
 
-				// Construct the final HTTP URL for the health check
 				pingURL := fmt.Sprintf("https://%s/check", host)
 
-				// Ping the valid URL
 				resp, err := http.Get(pingURL)
 				if err != nil {
 					log.Printf("[WARN] Failed to ping %s: %v\n", pingURL, err)
 					continue
 				}
+				log.Printf("[INFO] Pinged %s — Status: %s", pingURL, resp.Status)
 				resp.Body.Close()
 			}
-			resp2,err := http.Get(JS_ServerURL)
-				if err != nil {
-					log.Printf("[WARN] Failed to ping %s:","https://libr-server.onrender.com/")
-					continue
-				}
+			resp2, err := http.Get(JS_ServerURL)
+			if err != nil {
+				log.Printf("[WARN] Failed to ping JS server at %s: %v", JS_ServerURL, err)
+				continue 
+			}
 			resp2.Body.Close()
-				fmt.Println("[INFO]Pinged JS server successfully")
-				log.Printf("[INFO] Pinged %s — Status: %s\n", pingURL, resp.Status)
-			time.Sleep(interval)
+			fmt.Println("[INFO] Pinged JS server successfully")
 		}
 	}()
 }
