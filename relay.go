@@ -57,11 +57,11 @@ const ChatProtocol = protocol.ID("/chat/1.0.0")
 //var RelayMultiAddrList = []string{"/dns4/0.tcp.in.ngrok.io/tcp/14395/p2p/12D3KooWLBVV1ty7MwJQos34jy1WqGrfkb3bMAfxUJzCgwTBQ2pn",}
 
 type reqFormat struct {
-	Type string json:"type,omitempty"
-	//PubIP     string          json:"pubip,omitempty"
-	PeerID    string          json:"peer_id"
-	ReqParams json.RawMessage json:"reqparams,omitempty"
-	Body      json.RawMessage json:"body,omitempty"
+	Type string `json:"type,omitempty"`
+	//PubIP     string          `json:"pubip,omitempty"`
+	PeerID    string          `json:"peer_id"`
+	ReqParams json.RawMessage `json:"reqparams,omitempty"`
+	Body      json.RawMessage `json:"body,omitempty"`
 }
 
 // var (
@@ -85,8 +85,8 @@ var (
 )
 
 type respFormat struct {
-	Type string json:"type"
-	Resp []byte json:"resp"
+	Type string `json:"type"`
+	Resp []byte `json:"resp"`
 }
 
 type RelayEvents struct{}
@@ -116,10 +116,6 @@ func (re *RelayEvents) Disconnected(net network.Network, conn network.Conn) {
 
 func main() {
 	fmt.Println("STARTING RELAY CODE")
-	
-	defer fmt.Println("[INFO] Shutting down relay...")
-	defer deleteFromJSServer()
-
 	//godotenv.Load()
 	JS_API_key = os.Getenv("JS_API_KEY")
 	JS_ServerURL = os.Getenv("JS_ServerURL")
@@ -219,6 +215,8 @@ func main() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
+	deleteFromJSServer()
+	fmt.Println("[INFO] Shutting down relay...")
 }
 func remove(Lists *[]string, val string) {
 	for i, item := range *Lists {
@@ -725,11 +723,11 @@ func ConnectJSServer() error {
 }
 
 type ResponsePayload struct {
-	BootList []Relay json:"boot_list"
+	BootList []Relay `json:"boot_list"`
 }
 
 type Relay struct {
-	Address string json:"address"
+	Address string `json:"address"`
 }
 
 func GetRelayAddrFromJSServer() ([]string, error) {
@@ -763,8 +761,6 @@ func GetRelayAddrFromJSServer() ([]string, error) {
 }
 
 func deleteFromJSServer() error {
-	fmt.Print("qwertyuiop\n")
-	defer fmt.Printf("Successfully deleted relay")
 	deleteData := map[string]string{
 		"address": OwnRelayAddrFull,
 	}
@@ -793,6 +789,7 @@ func deleteFromJSServer() error {
 		return fmt.Errorf("server returned non-200 status code: %d", resp.StatusCode)
 	}
 
+	fmt.Printf("Successfully deleted relay")
 	return nil
 }
 
@@ -807,7 +804,7 @@ func deleteFromJSServer() error {
 // 	var relayList []string
 // 	for cursor.Next(ctx) {
 // 		var doc struct {
-// 			Address string bson:"address"
+// 			Address string `bson:"address"`
 // 		}
 // 		if err := cursor.Decode(&doc); err != nil {
 // 			return nil, err
@@ -833,7 +830,7 @@ func deleteFromJSServer() error {
 // 	var relayList []string
 // 	for cursor.Next(ctx) {
 // 		var doc struct {
-// 			Address string bson:"address"
+// 			Address string `bson:"address"`
 // 		}
 // 		if err := cursor.Decode(&doc); err != nil {
 // 			return nil, fmt.Errorf("failed to decode relay document: %w", err)
