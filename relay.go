@@ -117,7 +117,7 @@ func (re *RelayEvents) Disconnected(net network.Network, conn network.Conn) {
 func main() {
 	fmt.Println("STARTING RELAY CODE")
 	//godotenv.Load()
-	JS_API_key = os.Getenv("JS_API_key")
+	JS_API_key = os.Getenv("JS_API_KEY")
 	JS_ServerURL = os.Getenv("JS_ServerURL")
 	if JS_API_key == "" || JS_ServerURL == "" {
 		fmt.Println("[DEBUG] Missing JS API key or server URL")
@@ -164,7 +164,7 @@ func main() {
 
 	RelayHost.Network().Notify(&RelayEvents{})
 
-	OwnRelayAddrFull = fmt.Sprintf("/dns4/relay-8wrh.onrender.com/tcp/443/wss/p2p/%s", RelayHost.ID().String())
+	OwnRelayAddrFull = fmt.Sprintf("/dns4/libr-relay-y7ib.onrender.com/tcp/443/wss/p2p/%s", RelayHost.ID().String())
 	err = ConnectJSServer()
 	if err != nil {
 		fmt.Printf("[DEBUG] Error connecting to JS server: %s\n", err)
@@ -269,7 +269,7 @@ func PingTargets(addresses []string, interval time.Duration) {
 					continue
 				}
 				resp2.Body.Close()
-
+				fmt.Println("[INFO]Pinged JS server successfully")
 				log.Printf("[INFO] Pinged %s — Status: %s\n", pingURL, resp.Status)
 			}
 			time.Sleep(interval)
