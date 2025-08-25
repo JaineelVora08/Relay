@@ -43,8 +43,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
-
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type RelayDist struct {
@@ -78,16 +76,16 @@ var (
 
 var RelayHost host.Host
 
-var (
-	MongoClient *mongo.Client
-	ctx         context.Context
-	cancel      context.CancelFunc
-)
+// var (
+// 	MongoClient *mongo.Client
+// 	ctx         context.Context
+// 	cancel      context.CancelFunc
+// )
 
-type respFormat struct {
-	Type string `json:"type"`
-	Resp []byte `json:"resp"`
-}
+// type respFormat struct {
+// 	Type string `json:"type"`
+// 	Resp []byte `json:"resp"`
+// }
 
 type RelayEvents struct{}
 
@@ -116,6 +114,10 @@ func (re *RelayEvents) Disconnected(net network.Network, conn network.Conn) {
 
 func main() {
 	fmt.Println("STARTING RELAY CODE")
+	
+	defer fmt.Println("[INFO] Shutting down relay...")
+	defer deleteFromJSServer()
+
 	//godotenv.Load()
 	JS_API_key = os.Getenv("JS_API_KEY")
 	JS_ServerURL = os.Getenv("JS_ServerURL")
@@ -209,14 +211,12 @@ func main() {
 	}()
 
 	addr, _ := GetRelayAddrFromJSServer()
-	go PingTargets(addr, 5*time.Minute)
+	go PingTargets(addr, 5*time.Minute, JS_ServerURL)
 
 	fmt.Println("[DEBUG] Waiting for interrupt signal...")
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
-	deleteFromJSServer()
-	fmt.Println("[INFO] Shutting down relay...")
 }
 func remove(Lists *[]string, val string) {
 	for i, item := range *Lists {
@@ -227,96 +227,55 @@ func remove(Lists *[]string, val string) {
 	}
 }
 
-// func PingTargets(addresses []string, interval time.Duration) {
-// 	go func() {
+func PingTargets(addresses []string, interval time.Duration, JS_ServerURL string) {
+       for {
+	       log.Println("[DEBUG] PingTargets running...")
+		   resp2, err := http.Get(JS_ServerURL)
+		       if err != nil {
+			       log.Printf("[WARN] Failed to ping JS server %s: %v\n", JS_ServerURL, err)
+			       continue
+		       }
+		       resp2.Body.Close()
+		       log.Println("[INFO] Pinged JS server successfully")
+	       for _, multiAddrStr := range addresses {
+		       // Parse the multiaddress string
+		       maddr, err := ma.NewMultiaddr(multiAddrStr)
+		       if err != nil {
+			       log.Printf("[WARN] Could not parse multiaddress %s: %v\n", multiAddrStr, err)
+			       continue
+		       }
 
-// 		for {
-// 			for _, multiAddrStr := range addresses {
-// 				// Parse the multiaddress string
-// 				maddr, err := ma.NewMultiaddr(multiAddrStr)
-// 				if err != nil {
-// 					log.Printf("[WARN] Could not parse multiaddress %s: %v\n", multiAddrStr, err)
-// 					continue
-// 				}
+		       // Extract the domain name
+		       host, err := maddr.ValueForProtocol(ma.P_DNS4)
+		       if err != nil {
+			       host, err = maddr.ValueForProtocol(ma.P_DNS6)
+			       if err != nil {
+				       log.Printf("[WARN] Could not extract host from multiaddress %s: %v\n", multiAddrStr, err)
+				       continue
+			       }
+		       }
 
-// 				// Extract the domain name
-// 				host, err := maddr.ValueForProtocol(ma.P_DNS4)
-// 				if err != nil {
-// 					// Fallback for P_DNS6 or other domain protocols if needed
-// 					host, err = maddr.ValueForProtocol(ma.P_DNS6)
-// 					if err != nil {
-// 						log.Printf("[WARN] Could not extract host from multiaddress %s: %v\n", multiAddrStr, err)
-// 						continue
-// 					}
-// 				}
+		       // Construct the final HTTP URL for the health check
+		       pingURL := fmt.Sprintf("https://%s/check", host)
 
-// 				// Construct the final HTTP URL for the health check
-// 				pingURL := fmt.Sprintf("https://%s/check", host)
+		       // Ping the valid URL
+		       log.Printf("[DEBUG] Pinging %s", pingURL)
+		       resp, err := http.Get(pingURL)
+		       if err != nil {
+			       log.Printf("[WARN] Failed to ping %s: %v\n", pingURL, err)
+			       continue
+		       }
+		       resp.Body.Close()
+		       log.Printf("[INFO] Pinged %s — Status: %s\n", pingURL, resp.Status)
 
-// 				// Ping the valid URL
-// 				resp, err := http.Get(pingURL)
-// 				if err != nil {
-// 					log.Printf("[WARN] Failed to ping %s: %v\n", pingURL, err)
-// 					continue
-// 				}
-// 				resp.Body.Close()
-// 			}
-// 			resp2,err := http.Get(JS_ServerURL)
-// 				if err != nil {
-// 					log.Printf("[WARN] Failed to ping %s:","https://libr-server.onrender.com/")
-// 					continue
-// 				}
-// 			resp2.Body.Close()
-// 				fmt.Println("[INFO]Pinged JS server successfully")
-// 				log.Printf("[INFO] Pinged %s — Status: %s\n", pingURL, resp.Status)
-// 			time.Sleep(interval)
-// 		}
-// 	}()
-// }
-
-func PingTargets(addresses []string, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	
-	go func() {
-		for range ticker.C {
-			log.Println("[INFO] Starting new ping cycle...")
-			
-			for _, multiAddrStr := range addresses {
-				maddr, err := ma.NewMultiaddr(multiAddrStr)
-				if err != nil {
-					log.Printf("[WARN] Could not parse multiaddress %s: %v\n", multiAddrStr, err)
-					continue
-				}
-
-				host, err := maddr.ValueForProtocol(ma.P_DNS4)
-				if err != nil {
-					host, err = maddr.ValueForProtocol(ma.P_DNS6) 
-					if err != nil {
-						log.Printf("[WARN] Could not extract host from multiaddress %s: %v\n", multiAddrStr, err)
-						continue
-					}
-				}
-
-				pingURL := fmt.Sprintf("https://%s/check", host)
-
-				resp, err := http.Get(pingURL)
-				if err != nil {
-					log.Printf("[WARN] Failed to ping %s: %v\n", pingURL, err)
-					continue
-				}
-				log.Printf("[INFO] Pinged %s — Status: %s", pingURL, resp.Status)
-				resp.Body.Close()
-			}
-			resp2, err := http.Get(JS_ServerURL)
-			if err != nil {
-				log.Printf("[WARN] Failed to ping JS server at %s: %v", JS_ServerURL, err)
-				continue 
-			}
-			resp2.Body.Close()
-			fmt.Println("[INFO] Pinged JS server successfully")
-		}
-	}()
+		       // Ping the JS server
+		       log.Printf("[DEBUG] About to ping JS server at %s...", JS_ServerURL)
+		       
+	       }
+	       time.Sleep(interval)
+       }
 }
+
 
 func contains(arr []string, target string) bool {
 	for _, vals := range arr {
@@ -629,7 +588,10 @@ func GetRelayAddr(peerID string) string {
 	sort.Slice(distmap, func(i, j int) bool {
 		return distmap[i].dist.Cmp(distmap[j].dist) < 0
 	})
-
+	if(len(distmap)==0){
+		fmt.Println("NO RELAYS FOUND TO CONTACT FOR FORWARDING. CHECK IF PEER EXISTS IN NETWORK")
+		return ""
+	}
 	relayIDused := distmap[0].relayID
 
 	var relayAddr string
@@ -802,6 +764,8 @@ func GetRelayAddrFromJSServer() ([]string, error) {
 }
 
 func deleteFromJSServer() error {
+	fmt.Print("qwertyuiop\n")
+	defer fmt.Printf("Successfully deleted relay")
 	deleteData := map[string]string{
 		"address": OwnRelayAddrFull,
 	}
@@ -830,7 +794,6 @@ func deleteFromJSServer() error {
 		return fmt.Errorf("server returned non-200 status code: %d", resp.StatusCode)
 	}
 
-	fmt.Printf("Successfully deleted relay")
 	return nil
 }
 
