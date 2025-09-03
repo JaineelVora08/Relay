@@ -261,6 +261,8 @@ func main() {
 
 	// Start background watcher that purges expired reservations and logs changes.
 	go resvTracker.WatchAndPurge(30*time.Second, stopResvWatcher)
+	go resvTracker.PrintActiveLoop(1*time.Minute, stopResvWatcher)
+
 	fmt.Printf("[INFO] Relay started!\n")
 	fmt.Printf("[INFO] Peer ID: %s\n", RelayHost.ID())
 
@@ -289,6 +291,44 @@ func main() {
 
 	// Stop watcher cleanly
 	close(stopResvWatcher)
+}
+
+// PrintActiveLoop prints active reservations at the given interval.
+// Use the same stopCh you pass to WatchAndPurge so both goroutines stop together.
+func (rt *ReservationTracker) PrintActiveLoop(interval time.Duration, stopCh <-chan struct{}) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			active := rt.ListActive() // ListActive returns a safe copy
+			if len(active) == 0 {
+				log.Println("[RESV] no active reservations")
+				continue
+			}
+
+			// sort keys for stable output
+			keys := make([]string, 0, len(active))
+			for k := range active {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+
+			log.Printf("[RESV] active reservations: %d\n", len(keys))
+			now := time.Now()
+			for _, pid := range keys {
+				exp := active[pid]
+				remaining := exp.Sub(now)
+				if remaining < 0 {
+					remaining = 0
+				}
+				log.Printf("[RESV]  - %s  expires: %s  (in %s)\n", pid, exp.Format(time.RFC3339), remaining.Truncate(time.Second))
+			}
+		case <-stopCh:
+			log.Println("[RESV] reservation printer stopping")
+			return
+		}
+	}
 }
 
 func (rt *ReservationTracker) RemoveReservation(p peer.ID) {
