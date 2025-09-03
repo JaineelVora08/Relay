@@ -73,6 +73,7 @@ var (
 
 var RelayHost host.Host
 var RelayService *relay.Relay
+var GlobalReservationTracker *ReservationTracker
 
 // ReservationTracker implements relay.ACLFilter to observe reservation attempts.
 // It records reservations (peerID -> expiry time) and exposes a watcher that logs
@@ -160,14 +161,31 @@ func (re *RelayEvents) ListenClose(net network.Network, addr ma.Multiaddr) {}
 func (re *RelayEvents) Connected(net network.Network, conn network.Conn) {
 	fmt.Printf("[INFO] Peer connected: %s\n", conn.RemotePeer())
 }
+
+// func (re *RelayEvents) Disconnected(net network.Network, conn network.Conn) {
+// 	fmt.Printf("[INFO] Peer disconnected: %s\n", conn.RemotePeer())
+// 	// Remove peer from ConnectedPeers
+// 	mu.Lock()
+// 	if contains(ConnectedPeers, conn.RemotePeer().String()) {
+// 		remove(&ConnectedPeers, conn.RemotePeer().String())
+// 	}
+// 	mu.Unlock()
+// }
+
 func (re *RelayEvents) Disconnected(net network.Network, conn network.Conn) {
-	fmt.Printf("[INFO] Peer disconnected: %s\n", conn.RemotePeer())
-	// Remove peer from ConnectedPeers
+	pid := conn.RemotePeer()
+	fmt.Printf("[INFO] Peer disconnected: %s\n", pid)
+
+	// Remove from ConnectedPeers
 	mu.Lock()
-	if contains(ConnectedPeers, conn.RemotePeer().String()) {
-		remove(&ConnectedPeers, conn.RemotePeer().String())
+	if contains(ConnectedPeers, pid.String()) {
+		remove(&ConnectedPeers, pid.String())
 	}
 	mu.Unlock()
+	// Remove reservation too
+	if GlobalReservationTracker != nil {
+		GlobalReservationTracker.RemoveReservation(pid)
+	}
 }
 
 func main() {
@@ -230,7 +248,9 @@ func main() {
 	}
 
 	// Create reservation tracker and pass it as an ACL to the relay.
+	// Create reservation tracker and pass it as an ACL to the relay.
 	resvTracker := NewReservationTracker(customRelayResources.ReservationTTL)
+	GlobalReservationTracker = resvTracker
 
 	// Enable circuit relay service with ACL so we can observe reservations.
 	fmt.Println("[DEBUG] Enabling circuit relay service...")
@@ -241,7 +261,6 @@ func main() {
 
 	// Start background watcher that purges expired reservations and logs changes.
 	go resvTracker.WatchAndPurge(30*time.Second, stopResvWatcher)
-
 	fmt.Printf("[INFO] Relay started!\n")
 	fmt.Printf("[INFO] Peer ID: %s\n", RelayHost.ID())
 
@@ -270,6 +289,16 @@ func main() {
 
 	// Stop watcher cleanly
 	close(stopResvWatcher)
+}
+
+func (rt *ReservationTracker) RemoveReservation(p peer.ID) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+
+	if _, ok := rt.reservations[p.String()]; ok {
+		delete(rt.reservations, p.String())
+		log.Printf("[RESV] reservation removed due to disconnect: %s", p.String())
+	}
 }
 
 func remove(Lists *[]string, val string) {
