@@ -261,7 +261,7 @@ func main() {
 
 	// Start background watcher that purges expired reservations and logs changes.
 	go resvTracker.WatchAndPurge(30*time.Second, stopResvWatcher)
-	go resvTracker.PrintActiveLoop(1*time.Minute, stopResvWatcher)
+	go resvTracker.PrintActiveLoop(5*time.Minute, stopResvWatcher)
 
 	fmt.Printf("[INFO] Relay started!\n")
 	fmt.Printf("[INFO] Peer ID: %s\n", RelayHost.ID())
