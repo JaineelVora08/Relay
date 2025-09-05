@@ -276,6 +276,7 @@ func main() {
 	RelayHost.SetStreamHandler("/chat/1.0.0", handleChatStream)
 	go func() {
 		for {
+			fmt.Println("Slice of Connected Peers")
 			fmt.Println(ConnectedPeers)
 			time.Sleep(5 * time.Minute)
 		}
