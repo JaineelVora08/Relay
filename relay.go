@@ -101,9 +101,9 @@ func (rt *ReservationTracker) AllowReserve(p peer.ID, a ma.Multiaddr) bool {
 	_, existed := rt.reservations[p.String()]
 	rt.reservations[p.String()] = expiry
 	if existed {
-		log.Printf("[RESV] renewed reservation: %s (expires %s)", p.String(), expiry.Format(time.RFC3339))
+		fmt.Println("[RESV] renewed reservation: %s (expires %s)", p.String(), expiry.Format(time.RFC3339))
 	} else {
-		log.Printf("[RESV] new reservation: %s (expires %s)", p.String(), expiry.Format(time.RFC3339))
+		fmt.Println("[RESV] new reservation: %s (expires %s)", p.String(), expiry.Format(time.RFC3339))
 	}
 	return true
 }
@@ -138,7 +138,7 @@ func (rt *ReservationTracker) WatchAndPurge(interval time.Duration, stopCh <-cha
 			for pid, exp := range rt.reservations {
 				if now.After(exp) {
 					delete(rt.reservations, pid)
-					log.Printf("[RESV] reservation expired/removed: %s (was %s)", pid, exp.Format(time.RFC3339))
+					fmt.Println("[RESV] reservation expired/removed: %s (was %s)", pid, exp.Format(time.RFC3339))
 				}
 			}
 			rt.mu.Unlock()
@@ -315,7 +315,7 @@ func (rt *ReservationTracker) PrintActiveLoop(interval time.Duration, stopCh <-c
 			}
 			sort.Strings(keys)
 
-			log.Printf("[RESV] active reservations: %d\n", len(keys))
+			fmt.Println("[RESV] active reservations: %d\n", len(keys))
 			now := time.Now()
 			for _, pid := range keys {
 				exp := active[pid]
@@ -323,7 +323,7 @@ func (rt *ReservationTracker) PrintActiveLoop(interval time.Duration, stopCh <-c
 				if remaining < 0 {
 					remaining = 0
 				}
-				log.Printf("[RESV]  - %s  expires: %s  (in %s)\n", pid, exp.Format(time.RFC3339), remaining.Truncate(time.Second))
+				fmt.Println("[RESV]  - %s  expires: %s  (in %s)\n", pid, exp.Format(time.RFC3339), remaining.Truncate(time.Second))
 			}
 		case <-stopCh:
 			log.Println("[RESV] reservation printer stopping")
@@ -338,7 +338,7 @@ func (rt *ReservationTracker) RemoveReservation(p peer.ID) {
 
 	if _, ok := rt.reservations[p.String()]; ok {
 		delete(rt.reservations, p.String())
-		log.Printf("[RESV] reservation removed due to disconnect: %s", p.String())
+		fmt.Println("[RESV] reservation removed due to disconnect: %s", p.String())
 	}
 }
 
@@ -356,7 +356,7 @@ func PingTargets(addresses []string, interval time.Duration, JS_ServerURL string
 		log.Println("[DEBUG] PingTargets running...")
 		resp2, err := http.Get(JS_ServerURL)
 		if err != nil {
-			log.Printf("[WARN] Failed to ping JS server %s: %v\n", JS_ServerURL, err)
+			fmt.Println("[WARN] Failed to ping JS server %s: %v\n", JS_ServerURL, err)
 			continue
 		}
 		resp2.Body.Close()
@@ -365,7 +365,7 @@ func PingTargets(addresses []string, interval time.Duration, JS_ServerURL string
 			// Parse the multiaddress string
 			maddr, err := ma.NewMultiaddr(multiAddrStr)
 			if err != nil {
-				log.Printf("[WARN] Could not parse multiaddress %s: %v\n", multiAddrStr, err)
+				fmt.Println("[WARN] Could not parse multiaddress %s: %v\n", multiAddrStr, err)
 				continue
 			}
 
@@ -374,7 +374,7 @@ func PingTargets(addresses []string, interval time.Duration, JS_ServerURL string
 			if err != nil {
 				host, err = maddr.ValueForProtocol(ma.P_DNS6)
 				if err != nil {
-					log.Printf("[WARN] Could not extract host from multiaddress %s: %v\n", multiAddrStr, err)
+					fmt.Println("[WARN] Could not extract host from multiaddress %s: %v\n", multiAddrStr, err)
 					continue
 				}
 			}
