@@ -354,7 +354,7 @@ func remove(Lists *[]string, val string) {
 func PingTargets(addresses []string, interval time.Duration, JS_ServerURL string) {
 	for {
 		log.Println("[DEBUG] PingTargets running...")
-		resp2, err := http.Get(JS_ServerURL)
+		resp2, err := http.Get("https://libr-relay-ffqc.onrender.com/")
 		if err != nil {
 			fmt.Println("[WARN] Failed to ping JS server %s: %v\n", JS_ServerURL, err)
 			continue
@@ -393,7 +393,7 @@ func PingTargets(addresses []string, interval time.Duration, JS_ServerURL string
 			log.Printf("[INFO] Pinged %s — Status: %s\n", pingURL, resp.Status)
 
 			// Ping the JS server
-			log.Printf("[DEBUG] About to ping JS server at %s...", JS_ServerURL)
+			log.Printf("[DEBUG] About to ping JS server at %s...",   )
 
 		}
 		time.Sleep(interval)
