@@ -132,7 +132,7 @@ func main() {
 		panic("RELAY_KEY_STRING environment variable not set")
 	}
 	// 2. Create a deterministic private key
-	privKey, err := deterministicKeyFromString("qwertyuiop")
+	privKey, err := deterministicKeyFromString(secret)
 	if err != nil {
 		panic(err)
 	}
