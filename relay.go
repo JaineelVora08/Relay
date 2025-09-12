@@ -57,11 +57,11 @@ const ChatProtocol = protocol.ID("/chat/1.0.0")
 //var RelayMultiAddrList = []string{"/dns4/0.tcp.in.ngrok.io/tcp/14395/p2p/12D3KooWLBVV1ty7MwJQos34jy1WqGrfkb3bMAfxUJzCgwTBQ2pn",}
 
 type reqFormat struct {
-	Type string json:"type,omitempty"
-	//PubIP     string          json:"pubip,omitempty"
-	PeerID    string          json:"peer_id"
-	ReqParams json.RawMessage json:"reqparams,omitempty"
-	Body      json.RawMessage json:"body,omitempty"
+	Type string `json:"type,omitempty"`
+	//PubIP     string          `json:"pubip,omitempty"`
+	PeerID    string          `json:"peer_id"`
+	ReqParams json.RawMessage `json:"reqparams,omitempty"`
+	Body      json.RawMessage `json:"body,omitempty"`
 }
 
 // var (
@@ -85,8 +85,8 @@ var RelayHost host.Host
 // )
 
 // type respFormat struct {
-// 	Type string json:"type"
-// 	Resp []byte json:"resp"
+// 	Type string `json:"type"`
+// 	Resp []byte `json:"resp"`
 // }
 
 type RelayEvents struct{}
@@ -789,15 +789,15 @@ func ConnectJSServer() error {
 }
 
 type Relay struct {
-	Address string json:"address"
+	Address string `json:"address"`
 }
 
 type RelayList struct {
-	RelayList []Relay json:"relaylist"
+	RelayList []Relay `json:"relaylist"`
 }
 
 type ResponsePayload struct {
-	RelayList RelayList json:"relay_list"
+	RelayList RelayList `json:"relay_list"`
 }
 
 func GetRelayAddrFromJSServer() ([]string, error) {
@@ -907,7 +907,7 @@ func KeepAlive() {
 // 	var relayList []string
 // 	for cursor.Next(ctx) {
 // 		var doc struct {
-// 			Address string bson:"address"
+// 			Address string `bson:"address"`
 // 		}
 // 		if err := cursor.Decode(&doc); err != nil {
 // 			return nil, err
@@ -933,7 +933,7 @@ func KeepAlive() {
 // 	var relayList []string
 // 	for cursor.Next(ctx) {
 // 		var doc struct {
-// 			Address string bson:"address"
+// 			Address string `bson:"address"`
 // 		}
 // 		if err := cursor.Decode(&doc); err != nil {
 // 			return nil, fmt.Errorf("failed to decode relay document: %w", err)
