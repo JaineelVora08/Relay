@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/sha256"
 	"io"
 
@@ -32,6 +31,7 @@ import (
 
 	//"github.com/joho/godotenv"
 
+	"github.com/joho/godotenv"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -120,7 +120,7 @@ func main() {
 	defer fmt.Println("[INFO] Shutting down relay...")
 	defer deleteFromJSServer()
 
-	//godotenv.Load()
+	godotenv.Load()
 	JS_API_key = os.Getenv("JS_API_KEY")
 	JS_ServerURL = os.Getenv("JS_ServerURL")
 	port := os.Getenv("PORT")
@@ -132,7 +132,7 @@ func main() {
 		panic("RELAY_KEY_STRING environment variable not set")
 	}
 	// 2. Create a deterministic private key
-	privKey, err := deterministicKeyFromString(secret)
+	privKey, err := deterministicKeyFromString("qwertyuiop")
 	if err != nil {
 		panic(err)
 	}
@@ -247,8 +247,21 @@ func remove(Lists *[]string, val string) {
 }
 
 func deterministicKeyFromString(secret string) (crypto.PrivKey, error) {
-	sum := sha256.Sum256([]byte(secret))
-	return crypto.Ed25519PrivateKeyFromSeed(sum[:])
+	// Generate 64 bytes of deterministic data from the secret
+	h := sha256.New()
+	h.Write([]byte(secret))
+	seed1 := h.Sum(nil)
+
+	// Generate another 32 bytes by hashing the first hash
+	h.Reset()
+	h.Write(seed1)
+	seed2 := h.Sum(nil)
+
+	// Combine both hashes to get 64 bytes
+	combinedSeed := append(seed1, seed2...)
+
+	// Create Ed25519 private key from the 64 bytes
+	return crypto.UnmarshalEd25519PrivateKey(combinedSeed)
 }
 
 func hourlyResetLoop() {
