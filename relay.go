@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/sha256"
 	"io"
 
@@ -32,6 +31,7 @@ import (
 
 	//"github.com/joho/godotenv"
 
+	"github.com/joho/godotenv"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -57,11 +57,11 @@ const ChatProtocol = protocol.ID("/chat/1.0.0")
 //var RelayMultiAddrList = []string{"/dns4/0.tcp.in.ngrok.io/tcp/14395/p2p/12D3KooWLBVV1ty7MwJQos34jy1WqGrfkb3bMAfxUJzCgwTBQ2pn",}
 
 type reqFormat struct {
-	Type string `json:"type,omitempty"`
-	//PubIP     string          `json:"pubip,omitempty"`
-	PeerID    string          `json:"peer_id"`
-	ReqParams json.RawMessage `json:"reqparams,omitempty"`
-	Body      json.RawMessage `json:"body,omitempty"`
+	Type string json:"type,omitempty"
+	//PubIP     string          json:"pubip,omitempty"
+	PeerID    string          json:"peer_id"
+	ReqParams json.RawMessage json:"reqparams,omitempty"
+	Body      json.RawMessage json:"body,omitempty"
 }
 
 // var (
@@ -85,8 +85,8 @@ var RelayHost host.Host
 // )
 
 // type respFormat struct {
-// 	Type string `json:"type"`
-// 	Resp []byte `json:"resp"`
+// 	Type string json:"type"
+// 	Resp []byte json:"resp"
 // }
 
 type RelayEvents struct{}
@@ -127,6 +127,15 @@ func main() {
 	if port == "" {
 		port = "443"
 	}
+	secret := os.Getenv("RELAY_KEY_STRING")
+	if secret == "" {
+		panic("RELAY_KEY_STRING environment variable not set")
+	}
+	// 2. Create a deterministic private key
+	privKey, err := deterministicKeyFromString(secret)
+	if err != nil {
+		panic(err)
+	}
 	if JS_API_key == "" || JS_ServerURL == "" {
 		fmt.Println("[DEBUG] Missing JS API key or server URL")
 		return
@@ -139,11 +148,11 @@ func main() {
 		log.Fatalf("[ERROR] Failed to create connection manager: %v", err)
 	}
 
-	privKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
-	if err != nil {
-		// handle error
-		panic(err)
-	}
+	// privKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	// if err != nil {
+	// 	// handle error
+	// 	panic(err)
+	// }
 	fmt.Println("[DEBUG] Creating relay host...")
 
 	RelayHost, err = libp2p.New(
@@ -235,6 +244,24 @@ func remove(Lists *[]string, val string) {
 			return
 		}
 	}
+}
+
+func deterministicKeyFromString(secret string) (crypto.PrivKey, error) {
+	// Generate 64 bytes of deterministic data from the secret
+	h := sha256.New()
+	h.Write([]byte(secret))
+	seed1 := h.Sum(nil)
+
+	// Generate another 32 bytes by hashing the first hash
+	h.Reset()
+	h.Write(seed1)
+	seed2 := h.Sum(nil)
+
+	// Combine both hashes to get 64 bytes
+	combinedSeed := append(seed1, seed2...)
+
+	// Create Ed25519 private key from the 64 bytes
+	return crypto.UnmarshalEd25519PrivateKey(combinedSeed)
 }
 
 func hourlyResetLoop() {
@@ -762,15 +789,15 @@ func ConnectJSServer() error {
 }
 
 type Relay struct {
-	Address string `json:"address"`
+	Address string json:"address"
 }
 
 type RelayList struct {
-	RelayList []Relay `json:"relaylist"`
+	RelayList []Relay json:"relaylist"
 }
 
 type ResponsePayload struct {
-	RelayList RelayList `json:"relay_list"`
+	RelayList RelayList json:"relay_list"
 }
 
 func GetRelayAddrFromJSServer() ([]string, error) {
@@ -880,7 +907,7 @@ func KeepAlive() {
 // 	var relayList []string
 // 	for cursor.Next(ctx) {
 // 		var doc struct {
-// 			Address string `bson:"address"`
+// 			Address string bson:"address"
 // 		}
 // 		if err := cursor.Decode(&doc); err != nil {
 // 			return nil, err
@@ -906,7 +933,7 @@ func KeepAlive() {
 // 	var relayList []string
 // 	for cursor.Next(ctx) {
 // 		var doc struct {
-// 			Address string `bson:"address"`
+// 			Address string bson:"address"
 // 		}
 // 		if err := cursor.Decode(&doc); err != nil {
 // 			return nil, fmt.Errorf("failed to decode relay document: %w", err)
