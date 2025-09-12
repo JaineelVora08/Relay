@@ -30,6 +30,8 @@ import (
 
 	//"github.com/joho/godotenv"
 
+	//"github.com/joho/godotenv"
+
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -50,8 +52,6 @@ type RelayDist struct {
 	dist    *big.Int
 }
 
-var OwnRelayAddrFull string
-
 const ChatProtocol = protocol.ID("/chat/1.0.0")
 
 //var RelayMultiAddrList = []string{"/dns4/0.tcp.in.ngrok.io/tcp/14395/p2p/12D3KooWLBVV1ty7MwJQos34jy1WqGrfkb3bMAfxUJzCgwTBQ2pn",}
@@ -64,6 +64,11 @@ type reqFormat struct {
 	Body      json.RawMessage `json:"body,omitempty"`
 }
 
+// var (
+// 	IDmap = make(map[string]string)
+// 	mu    sync.RWMutex
+// )
+
 var (
 	ConnectedPeers []string
 	mu             sync.RWMutex
@@ -72,120 +77,41 @@ var (
 )
 
 var RelayHost host.Host
-var RelayService *relay.Relay
-var GlobalReservationTracker *ReservationTracker
 
-// ReservationTracker implements relay.ACLFilter to observe reservation attempts.
-// It records reservations (peerID -> expiry time) and exposes a watcher that logs
-// when reservations expire / are removed.
-type ReservationTracker struct {
-	mu           sync.Mutex
-	reservations map[string]time.Time // peerID -> expiry
-	ttl          time.Duration
-}
+// var (
+// 	MongoClient *mongo.Client
+// 	ctx         context.Context
+// 	cancel      context.CancelFunc
+// )
 
-func NewReservationTracker(ttl time.Duration) *ReservationTracker {
-	return &ReservationTracker{
-		reservations: make(map[string]time.Time),
-		ttl:          ttl,
-	}
-}
-
-// AllowReserve is called by the relay when a peer tries to reserve a slot.
-// We record the reservation expiry here. Returning true allows the reservation.
-func (rt *ReservationTracker) AllowReserve(p peer.ID, a ma.Multiaddr) bool {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-
-	expiry := time.Now().Add(rt.ttl)
-	_, existed := rt.reservations[p.String()]
-	rt.reservations[p.String()] = expiry
-	if existed {
-		fmt.Println("[RESV] renewed reservation: %s (expires %s)", p.String(), expiry.Format(time.RFC3339))
-	} else {
-		fmt.Println("[RESV] new reservation: %s (expires %s)", p.String(), expiry.Format(time.RFC3339))
-	}
-	return true
-}
-
-// AllowConnect controls whether a source peer is allowed to connect to a dest peer.
-// For now we allow all connects; you can add ACL logic here.
-func (rt *ReservationTracker) AllowConnect(src peer.ID, srcAddr ma.Multiaddr, dest peer.ID) bool {
-	return true
-}
-
-// ListActive returns a copy of active reservations and their expiry.
-func (rt *ReservationTracker) ListActive() map[string]time.Time {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	copy := make(map[string]time.Time, len(rt.reservations))
-	for k, v := range rt.reservations {
-		copy[k] = v
-	}
-	return copy
-}
-
-// WatchAndPurge runs in background and purges expired reservations, logging when
-// reservations expire. interval controls how often the map is scanned.
-func (rt *ReservationTracker) WatchAndPurge(interval time.Duration, stopCh <-chan struct{}) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			now := time.Now()
-			rt.mu.Lock()
-			for pid, exp := range rt.reservations {
-				if now.After(exp) {
-					delete(rt.reservations, pid)
-					fmt.Println("[RESV] reservation expired/removed: %s (was %s)", pid, exp.Format(time.RFC3339))
-				}
-			}
-			rt.mu.Unlock()
-		case <-stopCh:
-			log.Println("[RESV] reservation watcher stopping")
-			return
-		}
-	}
-}
+// type respFormat struct {
+// 	Type string `json:"type"`
+// 	Resp []byte `json:"resp"`
+// }
 
 type RelayEvents struct{}
 
-var (
-	RelayEventsInstance = &RelayEvents{}
-	stopResvWatcher     = make(chan struct{})
-)
+var OwnRelayAddrFull string
 
 func (re *RelayEvents) Listen(net network.Network, addr ma.Multiaddr)      {}
 func (re *RelayEvents) ListenClose(net network.Network, addr ma.Multiaddr) {}
 func (re *RelayEvents) Connected(net network.Network, conn network.Conn) {
 	fmt.Printf("[INFO] Peer connected: %s\n", conn.RemotePeer())
 }
-
-// func (re *RelayEvents) Disconnected(net network.Network, conn network.Conn) {
-// 	fmt.Printf("[INFO] Peer disconnected: %s\n", conn.RemotePeer())
-// 	// Remove peer from ConnectedPeers
-// 	mu.Lock()
-// 	if contains(ConnectedPeers, conn.RemotePeer().String()) {
-// 		remove(&ConnectedPeers, conn.RemotePeer().String())
-// 	}
-// 	mu.Unlock()
-// }
-
 func (re *RelayEvents) Disconnected(net network.Network, conn network.Conn) {
-	pid := conn.RemotePeer()
-	fmt.Printf("[INFO] Peer disconnected: %s\n", pid)
-
-	// Remove from ConnectedPeers
+	fmt.Printf("[INFO] Peer disconnected: %s\n", conn.RemotePeer())
+	// Remove peer from IDmap if needed
 	mu.Lock()
-	if contains(ConnectedPeers, pid.String()) {
-		remove(&ConnectedPeers, pid.String())
+	// for pubip, pid := range IDmap {
+	// 	if pid == conn.RemotePeer().String() {
+	// 		delete(IDmap, pubip)
+	// 		break
+	// 	}
+	// }
+	if contains(ConnectedPeers, conn.RemotePeer().String()) {
+		remove(&ConnectedPeers, conn.RemotePeer().String())
 	}
 	mu.Unlock()
-	// Remove reservation too
-	if GlobalReservationTracker != nil {
-		GlobalReservationTracker.RemoveReservation(pid)
-	}
 }
 
 func main() {
@@ -194,12 +120,18 @@ func main() {
 	defer fmt.Println("[INFO] Shutting down relay...")
 	defer deleteFromJSServer()
 
+	//godotenv.Load()
 	JS_API_key = os.Getenv("JS_API_KEY")
 	JS_ServerURL = os.Getenv("JS_ServerURL")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "443"
+	}
 	if JS_API_key == "" || JS_ServerURL == "" {
 		fmt.Println("[DEBUG] Missing JS API key or server URL")
 		return
 	}
+	// fmt.Println(mongo_uri)
 
 	fmt.Println("[DEBUG] Creating connection manager...")
 	connMgr, err := connmgr.NewConnManager(100, 400)
@@ -209,13 +141,13 @@ func main() {
 
 	privKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	if err != nil {
+		// handle error
 		panic(err)
 	}
 	fmt.Println("[DEBUG] Creating relay host...")
 
 	RelayHost, err = libp2p.New(
 		libp2p.Identity(privKey),
-
 		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/443/ws"),
 		libp2p.Security(libp2ptls.ID, libp2ptls.New),
 		libp2p.ConnectionManager(connMgr),
@@ -228,7 +160,18 @@ func main() {
 		log.Fatalf("[ERROR] Failed to create relay host: %v", err)
 	}
 
-	RelayHost.Network().Notify(RelayEventsInstance)
+	go hourlyResetLoop()
+
+	// pubKey := privKey.GetPublic()
+
+	// pubKeyBytes, err := crypto.MarshalPublicKey(pubKey)
+	// if err != nil {
+	// 	log.Fatalf("Failed to marshal public key: %v", err)
+	// }
+
+	// pubKeyStr := base64.StdEncoding.EncodeToString(pubKeyBytes)
+
+	RelayHost.Network().Notify(&RelayEvents{})
 
 	OwnRelayAddrFull = fmt.Sprintf("/dns4/relay-8wrh.onrender.com/tcp/443/wss/p2p/%s", RelayHost.ID().String())
 	err = ConnectJSServer()
@@ -247,28 +190,24 @@ func main() {
 		MaxReservationsPerASN:  64,
 	}
 
-	// Create reservation tracker and pass it as an ACL to the relay.
-	// Create reservation tracker and pass it as an ACL to the relay.
-	resvTracker := NewReservationTracker(customRelayResources.ReservationTTL)
-	GlobalReservationTracker = resvTracker
-
-	// Enable circuit relay service with ACL so we can observe reservations.
+	// Enable circuit relay service
 	fmt.Println("[DEBUG] Enabling circuit relay service...")
-	RelayService, err = relay.New(RelayHost, relay.WithResources(customRelayResources), relay.WithACL(resvTracker))
+	_, err = relay.New(RelayHost, relay.WithResources(customRelayResources))
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to enable relay service: %v", err)
 	}
 
-	// Start background watcher that purges expired reservations and logs changes.
-	go resvTracker.WatchAndPurge(30*time.Second, stopResvWatcher)
-	go resvTracker.PrintActiveLoop(5*time.Minute, stopResvWatcher)
-
 	fmt.Printf("[INFO] Relay started!\n")
 	fmt.Printf("[INFO] Peer ID: %s\n", RelayHost.ID())
 
+	// Print all addresses
 	for _, addr := range RelayHost.Addrs() {
 		fmt.Printf("[INFO] Relay Address: %s/p2p/%s\n", addr, RelayHost.ID())
 	}
+
+	//OwnRelayAddrFull =  fmt.Sprintf("/dns4/0.tcp.in.ngrok.io/tcp/%s/p2p/%s","port_number", RelayHost.ID().String())
+
+	//go uploadRelayAddrToSheet(relayMultiaddrFull)
 
 	trial, _ := GetRelayAddrFromJSServer()
 	fmt.Println("Trial from js server is ", trial)
@@ -276,7 +215,6 @@ func main() {
 	RelayHost.SetStreamHandler("/chat/1.0.0", handleChatStream)
 	go func() {
 		for {
-			fmt.Println("Slice of Connected Peers")
 			fmt.Println(ConnectedPeers)
 			time.Sleep(5 * time.Minute)
 		}
@@ -284,64 +222,12 @@ func main() {
 
 	addr, _ := GetRelayAddrFromJSServer()
 	go PingTargets(addr, 5*time.Minute, JS_ServerURL)
-
+	go KeepAlive()
 	fmt.Println("[DEBUG] Waiting for interrupt signal...")
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
-
-	// Stop watcher cleanly
-	close(stopResvWatcher)
 }
-
-// PrintActiveLoop prints active reservations at the given interval.
-// Use the same stopCh you pass to WatchAndPurge so both goroutines stop together.
-func (rt *ReservationTracker) PrintActiveLoop(interval time.Duration, stopCh <-chan struct{}) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			active := rt.ListActive() // ListActive returns a safe copy
-			if len(active) == 0 {
-				log.Println("[RESV] no active reservations")
-				continue
-			}
-
-			// sort keys for stable output
-			keys := make([]string, 0, len(active))
-			for k := range active {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-
-			fmt.Println("[RESV] active reservations: %d\n", len(keys))
-			now := time.Now()
-			for _, pid := range keys {
-				exp := active[pid]
-				remaining := exp.Sub(now)
-				if remaining < 0 {
-					remaining = 0
-				}
-				fmt.Println("[RESV]  - %s  expires: %s  (in %s)\n", pid, exp.Format(time.RFC3339), remaining.Truncate(time.Second))
-			}
-		case <-stopCh:
-			log.Println("[RESV] reservation printer stopping")
-			return
-		}
-	}
-}
-
-func (rt *ReservationTracker) RemoveReservation(p peer.ID) {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-
-	if _, ok := rt.reservations[p.String()]; ok {
-		delete(rt.reservations, p.String())
-		fmt.Println("[RESV] reservation removed due to disconnect: %s", p.String())
-	}
-}
-
 func remove(Lists *[]string, val string) {
 	for i, item := range *Lists {
 		if item == val {
@@ -351,12 +237,39 @@ func remove(Lists *[]string, val string) {
 	}
 }
 
+func hourlyResetLoop() {
+	for {
+		now := time.Now()
+		nextHour := now.Truncate(time.Hour).Add(time.Hour)
+		sleepDuration := time.Until(nextHour)
+
+		fmt.Printf("[INFO] Sleeping %v until next hour (%v)\n",
+			sleepDuration, nextHour.Format(time.RFC3339))
+
+		time.Sleep(sleepDuration)
+
+		fmt.Printf("[INFO] Running reset at %v\n", time.Now().Format(time.RFC3339))
+		resetConnectionsAndData()
+	}
+}
+
+func resetConnectionsAndData() {
+	for _, conn := range RelayHost.Network().Conns() {
+		fmt.Printf("[INFO] Closing connection to peer: %s\n", conn.RemotePeer())
+		conn.Close()
+	}
+	mu.Lock()
+	ConnectedPeers = []string{}
+	mu.Unlock()
+	fmt.Println("[INFO] Resetting connected peers list")
+}
+
 func PingTargets(addresses []string, interval time.Duration, JS_ServerURL string) {
 	for {
 		log.Println("[DEBUG] PingTargets running...")
-		resp2, err := http.Get("https://libr-relay-ffqc.onrender.com/")
+		resp2, err := http.Get(JS_ServerURL)
 		if err != nil {
-			fmt.Println("[WARN] Failed to ping JS server %s: %v\n", JS_ServerURL, err)
+			log.Printf("[WARN] Failed to ping JS server %s: %v\n", JS_ServerURL, err)
 			continue
 		}
 		resp2.Body.Close()
@@ -365,7 +278,7 @@ func PingTargets(addresses []string, interval time.Duration, JS_ServerURL string
 			// Parse the multiaddress string
 			maddr, err := ma.NewMultiaddr(multiAddrStr)
 			if err != nil {
-				fmt.Println("[WARN] Could not parse multiaddress %s: %v\n", multiAddrStr, err)
+				log.Printf("[WARN] Could not parse multiaddress %s: %v\n", multiAddrStr, err)
 				continue
 			}
 
@@ -374,7 +287,7 @@ func PingTargets(addresses []string, interval time.Duration, JS_ServerURL string
 			if err != nil {
 				host, err = maddr.ValueForProtocol(ma.P_DNS6)
 				if err != nil {
-					fmt.Println("[WARN] Could not extract host from multiaddress %s: %v\n", multiAddrStr, err)
+					log.Printf("[WARN] Could not extract host from multiaddress %s: %v\n", multiAddrStr, err)
 					continue
 				}
 			}
@@ -393,7 +306,7 @@ func PingTargets(addresses []string, interval time.Duration, JS_ServerURL string
 			log.Printf("[INFO] Pinged %s — Status: %s\n", pingURL, resp.Status)
 
 			// Ping the JS server
-			log.Printf("[DEBUG] About to ping JS server at %s...",   )
+			log.Printf("[DEBUG] About to ping JS server at %s...", JS_ServerURL)
 
 		}
 		time.Sleep(interval)
@@ -922,6 +835,38 @@ func deleteFromJSServer() error {
 	}
 
 	return nil
+}
+
+func KeepAlive() {
+	for {
+		fmt.Println("[DEBUG] Sending keepalive messages to connected peers...")
+		mu.RLock()
+		peers := make([]string, len(ConnectedPeers))
+		copy(peers, ConnectedPeers)
+		mu.RUnlock()
+		for _, pid := range peers {
+			targetID, err := peer.Decode(pid)
+			if err != nil {
+				log.Printf("[KeepAlive] Invalid Peer ID: %v", err)
+				continue
+			}
+			stream, err := RelayHost.NewStream(context.Background(), targetID, ChatProtocol)
+			if err != nil {
+				log.Printf("[KeepAlive] Failed to open stream to %s: %v", pid, err)
+				continue
+			}
+			encoder := json.NewEncoder(stream)
+			keepAliveMsg := reqFormat{
+				Type:   "keepalive",
+				PeerID: pid,
+			}
+			if err := encoder.Encode(keepAliveMsg); err != nil {
+				log.Printf("[KeepAlive] Failed to send keepalive to %s: %v", pid, err)
+			}
+			stream.Close()
+		}
+		time.Sleep(10 * time.Minute) // interval between keep alive messages
+	}
 }
 
 // func GetRelayAddrFromMongo() ([]string, error) {
