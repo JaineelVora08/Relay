@@ -127,15 +127,15 @@ func main() {
 	if port == "" {
 		port = "443"
 	}
-	secret := os.Getenv("RELAY_KEY_STRING")
-	if secret == "" {
-		panic("RELAY_KEY_STRING environment variable not set")
-	}
-	// 2. Create a deterministic private key
-	privKey, err := deterministicKeyFromString(secret)
-	if err != nil {
-		panic(err)
-	}
+	// secret := os.Getenv("RELAY_KEY_STRING")
+	// if secret == "" {
+	// 	panic("RELAY_KEY_STRING environment variable not set")
+	// }
+	// // 2. Create a deterministic private key
+	// privKey, err := deterministicKeyFromString(secret)
+	// if err != nil {
+	// 	panic(err)
+	// }
 	if JS_API_key == "" || JS_ServerURL == "" {
 		fmt.Println("[DEBUG] Missing JS API key or server URL")
 		return
@@ -148,11 +148,11 @@ func main() {
 		log.Fatalf("[ERROR] Failed to create connection manager: %v", err)
 	}
 
-	// privKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
-	// if err != nil {
-	// 	// handle error
-	// 	panic(err)
-	// }
+	privKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	if err != nil {
+		// handle error
+		panic(err)
+	}
 	fmt.Println("[DEBUG] Creating relay host...")
 
 	RelayHost, err = libp2p.New(
