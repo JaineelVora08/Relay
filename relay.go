@@ -169,8 +169,6 @@ func main() {
 		log.Fatalf("[ERROR] Failed to create relay host: %v", err)
 	}
 
-	go hourlyResetLoop()
-
 	// pubKey := privKey.GetPublic()
 
 	// pubKeyBytes, err := crypto.MarshalPublicKey(pubKey)
@@ -262,33 +260,6 @@ func deterministicKeyFromString(secret string) (crypto.PrivKey, error) {
 
 	// Create Ed25519 private key from the 64 bytes
 	return crypto.UnmarshalEd25519PrivateKey(combinedSeed)
-}
-
-func hourlyResetLoop() {
-	for {
-		now := time.Now()
-		nextHour := now.Truncate(time.Hour).Add(time.Hour)
-		sleepDuration := time.Until(nextHour)
-
-		fmt.Printf("[INFO] Sleeping %v until next hour (%v)\n",
-			sleepDuration, nextHour.Format(time.RFC3339))
-
-		time.Sleep(sleepDuration)
-
-		fmt.Printf("[INFO] Running reset at %v\n", time.Now().Format(time.RFC3339))
-		resetConnectionsAndData()
-	}
-}
-
-func resetConnectionsAndData() {
-	for _, conn := range RelayHost.Network().Conns() {
-		fmt.Printf("[INFO] Closing connection to peer: %s\n", conn.RemotePeer())
-		conn.Close()
-	}
-	mu.Lock()
-	ConnectedPeers = []string{}
-	mu.Unlock()
-	fmt.Println("[INFO] Resetting connected peers list")
 }
 
 func PingTargets(addresses []string, interval time.Duration, JS_ServerURL string) {
