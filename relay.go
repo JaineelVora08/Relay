@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"io"
 
@@ -244,23 +245,23 @@ func remove(Lists *[]string, val string) {
 	}
 }
 
-func deterministicKeyFromString(secret string) (crypto.PrivKey, error) {
-	// Generate 64 bytes of deterministic data from the secret
-	h := sha256.New()
-	h.Write([]byte(secret))
-	seed1 := h.Sum(nil)
+// func deterministicKeyFromString(secret string) (crypto.PrivKey, error) {
+// 	// Generate 64 bytes of deterministic data from the secret
+// 	h := sha256.New()
+// 	h.Write([]byte(secret))
+// 	seed1 := h.Sum(nil)
 
-	// Generate another 32 bytes by hashing the first hash
-	h.Reset()
-	h.Write(seed1)
-	seed2 := h.Sum(nil)
+// 	// Generate another 32 bytes by hashing the first hash
+// 	h.Reset()
+// 	h.Write(seed1)
+// 	seed2 := h.Sum(nil)
 
-	// Combine both hashes to get 64 bytes
-	combinedSeed := append(seed1, seed2...)
+// 	// Combine both hashes to get 64 bytes
+// 	combinedSeed := append(seed1, seed2...)
 
-	// Create Ed25519 private key from the 64 bytes
-	return crypto.UnmarshalEd25519PrivateKey(combinedSeed)
-}
+// 	// Create Ed25519 private key from the 64 bytes
+// 	return crypto.UnmarshalEd25519PrivateKey(combinedSeed)
+// }
 
 func PingTargets(addresses []string, interval time.Duration, JS_ServerURL string) {
 	for {
